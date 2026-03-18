@@ -54,8 +54,7 @@ private:
     uint64_t vec_size = 50;
     uint64_t token_count = 0;
     int iter = 1;
-    float alpha = 0.025;
-    float start_alpha;
+    float start_alpha = 0.025;
     float sample = 1e-3;
 
     std::string data_file;
@@ -65,8 +64,6 @@ private:
     std::vector<float> syn0;  // 输入向量
     std::vector<float> syn1;  // 输出向量
     std::vector<Document> data;
-
-    std::mt19937_64 rng{std::random_device{}()};
 
     void LoadData() {
         std::ifstream fin(data_file);
@@ -221,6 +218,7 @@ private:
         syn0.resize(dict_size * vec_size, 0.0F);
         syn1.resize(dict_size * vec_size, 0.0F);
 
+        std::mt19937_64 rng{std::random_device{}()};
         std::uniform_real_distribution<float> dist(-0.5F/vec_size, 0.5F/vec_size);
         for (size_t i = 0; i < dict_size * vec_size; i++) {
             syn0[i] = dist(rng);
@@ -231,7 +229,7 @@ private:
     }
 
     // 单词上下文训练
-    void CBOW(int t, const std::vector<int>& context) {
+    void CBOW(float alpha, int t, const std::vector<int>& context) {
         if (context.empty()) return;
         
         std::vector<float> neu1(vec_size, 0.0F);
@@ -279,7 +277,7 @@ private:
     }
 
     // 文档分类训练
-    void TrainDocument(const std::vector<int>& word_indexes, 
+    void TrainDocument(float alpha, const std::vector<int>& word_indexes,
                       const std::vector<int>& label_indexes) {
         if (word_indexes.empty() || label_indexes.empty()) return;
         
@@ -341,22 +339,24 @@ private:
         }
     }
 
-    bool ShouldDiscard(uint64_t count) {
+    bool ShouldDiscard(std::mt19937_64& rng, uint64_t count) {
         if (sample <= 0) return false;
         float freq = static_cast<float>(count) / token_count;
-        float discard_prob = (std::sqrt(sample / freq) + sample / freq);
-        std::uniform_real_distribution<float> dist(0.0, 1.0);
-        return dist(rng) < discard_prob;
+        float keep_prob = std::sqrt(sample / freq) + sample / freq;
+        std::uniform_real_distribution<float> dist(0.0F, 1.0F);
+        return dist(rng) > keep_prob;
     }
 
     void FitOne(int core) {
+        std::mt19937_64 rng(std::random_device{}() + core);
+        float alpha = start_alpha;
+
         uint64_t count = 0;
         uint64_t docs_one_core = data.size() / num_core;
         uint64_t start_doc = core * docs_one_core;
         uint64_t end_doc = (core == num_core - 1) ? data.size() : start_doc + docs_one_core;
 
         std::uniform_int_distribution<int> window_dist(1, window);
-        std::uniform_real_distribution<float> sample_dist(0, 1);
 
         uint64_t core_count = 0;
         for (uint64_t doc = start_doc; doc < end_doc; doc++) {
@@ -373,19 +373,19 @@ private:
                     if (++count % 10000 == 0) {
                         float progress = static_cast<float>(count) / (core_count * iter);
                         alpha = start_alpha * (1 - progress);
-                        alpha = std::max(alpha, 0.0001f); // 防止alpha过小
+                        alpha = std::max(alpha, 0.0001f);
                     }
 
                     auto it = dict_map.find(ws[pos]);
                     if (it == dict_map.end()) continue;
 
                     int t = it->second;
-                    
+
                     // 跳过标签
                     if (dict[t].is_label) continue;
 
                     // 采样
-                    if (sample > 0 && ShouldDiscard(dict[t].cn)) {
+                    if (sample > 0 && ShouldDiscard(rng, dict[t].cn)) {
                         continue;
                     }
 
@@ -405,7 +405,7 @@ private:
                     }
 
                     if (!context.empty()) {
-                        CBOW(t, context);
+                        CBOW(alpha, t, context);
                     }
                 }
 
@@ -431,7 +431,7 @@ private:
 
                 // 训练文档分类
                 if (!word_indexes.empty() && !label_indexes.empty()) {
-                    TrainDocument(word_indexes, label_indexes);
+                    TrainDocument(alpha, word_indexes, label_indexes);
                 }
             }
         }
@@ -443,7 +443,6 @@ public:
     void Fit(const std::string& data_filename, const std::string& vec_filename) {
         data_file = data_filename;
         vec_file = vec_filename;
-        start_alpha = alpha;
 
         LoadData();
         if (dict_size == 0) {
