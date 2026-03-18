@@ -47,8 +47,8 @@ private:
     };
 
     int window = 2;
-    int min_count = 1;
-    int min_label_count = 1; // 标签最小计数
+    uint64_t min_count = 1;
+    uint64_t min_label_count = 1;
     int num_core = 1;
     uint64_t dict_size = 0;
     uint64_t vec_size = 50;
@@ -199,7 +199,7 @@ private:
 
             while (b != dict_size * 2 - 2) {
                 code.push_back(binary[b]);
-                point.push_back(b);
+                point.push_back(parent[b]);
                 b = parent[b];
             }
 
@@ -471,8 +471,8 @@ public:
     
     void SetVecSize(int size) { vec_size = size; }
     void SetWindow(int w) { window = w; }
-    void SetMinCount(int min) { min_count = min; }
-    void SetMinLabelCount(int min) { min_label_count = min; }
+    void SetMinCount(uint64_t min) { min_count = min; }
+    void SetMinLabelCount(uint64_t min) { min_label_count = min; }
     void SetCores(int n) { num_core = n; }
     void SetIter(int n) { iter = n; }
     void SetSample(float t) { sample = t; }
