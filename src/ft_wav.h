@@ -42,8 +42,8 @@ private:
     };
 
     struct Document {
-        std::vector<std::string> words;
-        std::vector<std::string> labels;
+        std::vector<int> words;   // word indices into dict
+        std::vector<int> labels;  // label indices into dict
     };
 
     int window = 2;
@@ -66,65 +66,84 @@ private:
     std::vector<Document> data;
 
     void LoadData() {
-        std::ifstream fin(data_file);
-        std::string line;
+        // --- Pass 1: count words, build dictionary ---
+        {
+            std::ifstream fin(data_file);
+            std::string line;
+            std::unordered_map<std::string, uint64_t> word_count;
+            std::unordered_map<std::string, uint64_t> label_count_map;
+            token_count = 0;
 
-        std::unordered_map<std::string, uint64_t> word_count;
-        std::unordered_map<std::string, uint64_t> label_count_map;
-
-        token_count = 0;
-
-        while (std::getline(fin, line)) {
-            if (!line.empty()) {
-                Document doc;
+            while (std::getline(fin, line)) {
+                if (line.empty()) continue;
                 auto tokens = StrSplit(line, ' ');
                 for (const auto& token : tokens) {
                     if (token.substr(0, 9) == "__label__") {
-                        doc.labels.push_back(token);
                         label_count_map[token]++;
                     } else if (!token.empty()) {
-                        doc.words.push_back(token);
                         word_count[token]++;
                         token_count++;
                     }
                 }
-                if (!doc.words.empty() && !doc.labels.empty()) {
-                    data.push_back(doc);
+            }
+
+            for (const auto& p : word_count) {
+                if (p.second >= min_count) {
+                    dict.push_back(Token(p.first));
+                    dict.back().cn = p.second;
+                    dict_map[p.first] = dict_size++;
+                } else {
+                    token_count -= p.second;
+                }
+            }
+
+            for (const auto& p : label_count_map) {
+                if (p.second >= min_label_count) {
+                    dict.push_back(Token(p.first, true));
+                    dict.back().cn = p.second;
+                    dict_map[p.first] = dict_size++;
+                }
+            }
+
+            std::sort(dict.begin(), dict.end(),
+                      [](const Token& a, const Token& b) {
+                        return a.cn > b.cn;
+                      });
+
+            dict_map.clear();
+            for (int i = 0; i < dict_size; i++) {
+                dict_map[dict[i].w] = i;
+            }
+        }
+
+        std::cerr << "Dict: " << dict_size << " words, "
+                  << token_count << " tokens\n";
+
+        // --- Pass 2: convert to indices, store compact documents ---
+        {
+            std::ifstream fin(data_file);
+            std::string line;
+
+            while (std::getline(fin, line)) {
+                if (line.empty()) continue;
+                Document doc;
+                auto tokens = StrSplit(line, ' ');
+                for (const auto& token : tokens) {
+                    auto it = dict_map.find(token);
+                    if (it == dict_map.end()) continue;
+                    if (dict[it->second].is_label) {
+                        doc.labels.push_back(it->second);
+                    } else {
+                        doc.words.push_back(it->second);
+                    }
+                }
+                if (!doc.words.empty()) {
+                    data.push_back(std::move(doc));
                 }
             }
         }
 
-        // 添加单词到字典
-        for (const auto& p : word_count) {
-            if (p.second >= min_count) {
-                dict.push_back(Token(p.first));
-                dict.back().cn = p.second;
-                dict_map[p.first] = dict_size++;
-            } else {
-                token_count -= p.second;
-            }
-        }
-
-        // 添加标签到字典
-        for (const auto& p : label_count_map) {
-            if (p.second >= min_label_count) {
-                dict.push_back(Token(p.first, true));
-                dict.back().cn = p.second;
-                dict_map[p.first] = dict_size++;
-            }
-        }
-
-        // 按频率排序
-        std::sort(dict.begin(), dict.end(), 
-                  [](const Token& a, const Token& b) {
-                    return a.cn > b.cn;
-                  });
-        
-        // 重建映射
-        dict_map.clear();
-        for (int i = 0; i < dict_size; i++) {
-            dict_map[dict[i].w] = i;
-        }
+        std::cerr << "Loaded " << data.size() << " documents\n";
     }
 
     void SaveModel() {
@@ -228,10 +247,10 @@ private:
         CreateBinaryTree();
     }
 
-    // 单词上下文训练
-    void CBOW(float alpha, int t, const std::vector<int>& context) {
-        if (context.empty()) return;
-        
+    // 单词上下文训练，返回 loss
+    float CBOW(float alpha, int t, const std::vector<int>& context) {
+        if (context.empty()) return 0.0F;
+
         std::vector<float> neu1(vec_size, 0.0F);
         std::vector<float> neu1e(vec_size, 0.0F);
 
@@ -246,13 +265,14 @@ private:
         }
 
         // 层次Softmax
+        float loss = 0.0F;
         for (int v = 0; v < dict[t].code.size(); v++) {
             int point_index = dict[t].point[v];
             // 确保point_index在有效范围内
             if (point_index < 0 || point_index >= static_cast<int>(dict_size)) {
                 continue;
             }
-            
+
             int l2 = point_index * vec_size;
             float f = 0;
             for (int c = 0; c < vec_size; c++) {
@@ -260,6 +280,10 @@ private:
             }
 
             float p = Sigmoid(f);
+            // -log P(code|context): code=0 -> -log(p), code=1 -> -log(1-p)
+            float prob = dict[t].code[v] == 0 ? p : (1.0F - p);
+            if (prob > 1e-10F) loss -= std::log(prob);
+
             float g = (1 - dict[t].code[v] - p) * alpha;
 
             for (int c = 0; c < vec_size; c++) {
@@ -274,6 +298,7 @@ private:
                 syn0[i * vec_size + c] += neu1e[c] / context.size();
             }
         }
+        return loss;
     }
 
     // 文档分类训练
@@ -363,26 +388,31 @@ private:
             core_count += data[doc].words.size();
         }
 
+        double loss_sum = 0.0;
+        uint64_t loss_count = 0;
+
         for (int iteration = 0; iteration < iter; iteration++) {
             for (uint64_t doc_idx = start_doc; doc_idx < end_doc; doc_idx++) {
                 const auto& doc = data[doc_idx];
                 const auto& ws = doc.words;
 
                 // 单词上下文训练
-                for (int pos = 0; pos < ws.size(); pos++) {
+                for (int pos = 0; pos < static_cast<int>(ws.size()); pos++) {
                     if (++count % 10000 == 0) {
                         float progress = static_cast<float>(count) / (core_count * iter);
                         alpha = start_alpha * (1 - progress);
                         alpha = std::max(alpha, 0.0001f);
+                        if (core == 0) {
+                            double avg_loss = loss_count > 0 ? loss_sum / loss_count : 0;
+                            std::cerr << "\rprogress: " << int(progress * 100)
+                                      << "% alpha: " << alpha
+                                      << " loss: " << avg_loss << "    " << std::flush;
+                            loss_sum = 0.0;
+                            loss_count = 0;
+                        }
                     }
 
-                    auto it = dict_map.find(ws[pos]);
-                    if (it == dict_map.end()) continue;
-
-                    int t = it->second;
-
-                    // 跳过标签
-                    if (dict[t].is_label) continue;
+                    int t = ws[pos];
 
                     // 采样
                     if (sample > 0 && ShouldDiscard(rng, dict[t].cn)) {
@@ -394,44 +424,24 @@ private:
 
                     for (int a = -current_window; a <= current_window; a++) {
                         if (a == 0) continue;
-
                         int context_pos = pos + a;
-                        if (context_pos >= 0 && context_pos < ws.size()) {
-                            auto ctx_it = dict_map.find(ws[context_pos]);
-                            if (ctx_it != dict_map.end() && !dict[ctx_it->second].is_label) {
-                                context.push_back(ctx_it->second);
-                            }
+                        if (context_pos >= 0 && context_pos < static_cast<int>(ws.size())) {
+                            context.push_back(ws[context_pos]);
                         }
                     }
 
                     if (!context.empty()) {
-                        CBOW(alpha, t, context);
+                        float l = CBOW(alpha, t, context);
+                        if (core == 0) {
+                            loss_sum += l;
+                            loss_count++;
+                        }
                     }
                 }
 
                 // 文档分类训练
-                std::vector<int> word_indexes;
-                std::vector<int> label_indexes;
-
-                // 收集文档中的单词索引
-                for (const auto& w : doc.words) {
-                    auto it = dict_map.find(w);
-                    if (it != dict_map.end() && !dict[it->second].is_label) {
-                        word_indexes.push_back(it->second);
-                    }
-                }
-
-                // 收集文档中的标签索引
-                for (const auto& label : doc.labels) {
-                    auto it = dict_map.find(label);
-                    if (it != dict_map.end() && dict[it->second].is_label) {
-                        label_indexes.push_back(it->second);
-                    }
-                }
-
-                // 训练文档分类
-                if (!word_indexes.empty() && !label_indexes.empty()) {
-                    TrainDocument(alpha, word_indexes, label_indexes);
+                if (!doc.labels.empty()) {
+                    TrainDocument(alpha, doc.words, doc.labels);
                 }
             }
         }

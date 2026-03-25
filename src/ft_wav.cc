@@ -1,64 +1,72 @@
 #include "ft_wav.h"
 #include <iostream>
-#include <fstream>
+#include <cstring>
+#include <cstdlib>
 
-// 创建测试数据文件
-void create_test_data(const std::string& filename) {
-    std::ofstream fout(filename);
-    fout << "__label__sports __label__nba Lakers win championship\n";
-    fout << "__label__tech __label__apple Apple releases new iPhone\n";
-    fout << "__label__politics President gives speech to congress\n";
-    fout << "__label__sports __label__soccer Real Madrid wins Champions League\n";
-    fout << "__label__tech Microsoft announces new Surface device\n";
-    fout << "__label__politics __label__election Election results announced\n";
-    fout << "__label__sports Golden State Warriors win NBA finals\n";
-    fout << "__label__tech Google releases new AI model\n";
-    fout << "__label__politics __label__international UN holds climate summit\n";
-    fout << "__label__sports __label__tennis Nadal wins French Open\n";
-    fout.close();
+void PrintUsage() {
+    std::cerr << "Usage: wavec [options] <input> <output>\n"
+              << "Options:\n"
+              << "  -dim <int>      Vector dimension (default: 100)\n"
+              << "  -window <int>   Context window size (default: 5)\n"
+              << "  -mincount <int> Minimum word frequency (default: 5)\n"
+              << "  -threads <int>  Number of threads (default: 4)\n"
+              << "  -iter <int>     Training iterations (default: 5)\n"
+              << "  -sample <float> Subsampling threshold (default: 1e-3)\n";
 }
 
-int main() {
-    // 创建测试数据
-    const std::string train_file = "test_data.txt";
-    create_test_data(train_file);
-    
-    // 设置并训练模型
-    wavec::FastText model;
-    model.SetVecSize(20);          // 设置较小的向量维度便于测试
-    model.SetWindow(3);            // 设置上下文窗口
-    model.SetMinCount(1);          // 设置单词最小计数
-    model.SetMinLabelCount(1);     // 设置标签最小计数
-    model.SetCores(1);             // 单线程运行便于调试
-    model.SetIter(3);              // 训练3轮
-    model.SetSample(0);            // 禁用采样
-    
-    std::cout << "Starting training..." << std::endl;
-    try {
-        model.Fit(train_file, "model.vec");
-        std::cout << "Training completed successfully!" << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "Training failed: " << e.what() << std::endl;
+int main(int argc, char* argv[]) {
+    if (argc < 3) {
+        PrintUsage();
         return 1;
     }
-    
-    // 检查输出文件
-    std::ifstream fin("model.vec");
-    if (fin) {
-        std::cout << "Model file created successfully!" << std::endl;
-        std::string line;
-        std::getline(fin, line);
-        std::cout << "Header: " << line << std::endl;
-        
-        int count = 0;
-        while (std::getline(fin, line)) {
-            if (++count <= 5) {
-                std::cout << "Vector " << count << ": " << line.substr(0, 40) << "..." << std::endl;
-            }
+
+    int dim = 100;
+    int window = 5;
+    int mincount = 5;
+    int threads = 4;
+    int iter = 5;
+    float sample = 1e-3;
+
+    int i = 1;
+    while (i < argc - 2) {
+        if (std::strcmp(argv[i], "-dim") == 0 && i + 1 < argc - 2) {
+            dim = std::atoi(argv[++i]);
+        } else if (std::strcmp(argv[i], "-window") == 0 && i + 1 < argc - 2) {
+            window = std::atoi(argv[++i]);
+        } else if (std::strcmp(argv[i], "-mincount") == 0 && i + 1 < argc - 2) {
+            mincount = std::atoi(argv[++i]);
+        } else if (std::strcmp(argv[i], "-threads") == 0 && i + 1 < argc - 2) {
+            threads = std::atoi(argv[++i]);
+        } else if (std::strcmp(argv[i], "-iter") == 0 && i + 1 < argc - 2) {
+            iter = std::atoi(argv[++i]);
+        } else if (std::strcmp(argv[i], "-sample") == 0 && i + 1 < argc - 2) {
+            sample = std::atof(argv[++i]);
+        } else {
+            std::cerr << "Unknown option: " << argv[i] << "\n";
+            PrintUsage();
+            return 1;
         }
-    } else {
-        std::cerr << "Failed to create model file!" << std::endl;
+        ++i;
     }
-    
+
+    std::string input = argv[argc - 2];
+    std::string output = argv[argc - 1];
+
+    std::cerr << "Input:    " << input << "\n"
+              << "Output:   " << output << "\n"
+              << "dim=" << dim << " window=" << window
+              << " mincount=" << mincount << " threads=" << threads
+              << " iter=" << iter << " sample=" << sample << "\n";
+
+    wavec::FastText model;
+    model.SetVecSize(dim);
+    model.SetWindow(window);
+    model.SetMinCount(mincount);
+    model.SetMinLabelCount(1);
+    model.SetCores(threads);
+    model.SetIter(iter);
+    model.SetSample(sample);
+
+    model.Fit(input, output);
     return 0;
 }

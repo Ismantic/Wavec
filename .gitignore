@@ -5,4 +5,8 @@ build/
 # Model outputs
 *.vec
 *.vec.syn1
+!data/model.vec
+
+# Intermediate data
 test_data.txt
+train_*.txt
