@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract THUCNews content to plain text, one article per line."""
+"""Extract content to plain text, one article per line."""
 
 import json
 import glob
@@ -7,7 +7,7 @@ import sys
 
 def main():
     if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <thucnews_dir> <output_file>", file=sys.stderr)
+        print(f"Usage: {sys.argv[0]} <news_dir> <output_file>", file=sys.stderr)
         sys.exit(1)
 
     thuc_dir = sys.argv[1]
