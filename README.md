@@ -1,16 +1,6 @@
 # Wavec
 
-CBOW + Hierarchical Softmax 词向量训练，兼具 FastText 风格的文档分类能力。
-
-## 特性
-
-- **CBOW 架构**：通过上下文词预测中心词，学习词向量
-- **霍夫曼树 Softmax**：将输出层计算复杂度从 O(V) 降至 O(log V)
-- **文档分类**：支持 `__label__` 前缀的标签，联合训练词向量与分类器
-- **多线程训练**：按文档分块并行
-- **高频词下采样**：减少常见词的训练频次，提升稀有词的向量质量
-
-详细的算法推导见 [W2V.md](W2V.md)。
+CBOW + Hierarchical Softmax 中文词向量训练。
 
 ## 构建
 
@@ -19,42 +9,66 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-## 使用
+生成三个可执行文件：`wavec`（训练）、`sim`（近义词查询）、`kmeans`（聚类）。
 
-直接运行内置测试：
+## 训练
 
 ```bash
-./build/wavec
+./build/wavec [options] <input> <output>
 ```
 
-自定义训练需修改 `src/ft_wav.cc`，通过 API 配置参数：
+选项：
 
-```cpp
-wavec::FastText model;
-model.SetVecSize(100);      // 向量维度
-model.SetWindow(5);         // 上下文窗口
-model.SetMinCount(5);       // 词频阈值
-model.SetMinLabelCount(1);  // 标签频次阈值
-model.SetCores(8);          // 线程数
-model.SetIter(10);          // 训练轮数
-model.SetSample(1e-3);      // 下采样阈值
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| -dim | 100 | 向量维度 |
+| -window | 5 | 上下文窗口 |
+| -mincount | 5 | 最低词频 |
+| -threads | 4 | 线程数 |
+| -iter | 5 | 训练轮数 |
+| -sample | 1e-3 | 高频词下采样阈值 |
 
-model.Fit("train.txt", "model.vec");
+输入文件每行一个文档，词语空格分隔。输出为 word2vec 文本格式。
+
+### 全流程脚本
+
+`scripts/train.sh` 提供从 THUCNews 语料到词向量的完整 pipeline：
+
+```bash
+bash scripts/train.sh <thucnews_dir> <output_model> [threads]
 ```
 
-### 输入文件格式
+1. 提取文本（`prepare_thuc.py`）
+2. 并行分词（`segment.sh`，依赖 [IsmaCut](https://github.com/Ismantic/IsmaCut)）
+3. 训练词向量
 
-每行一个文档，标签以 `__label__` 前缀标识，词语以空格分隔：
+## 工具
 
+### sim — 近义词查询
+
+```bash
+./build/sim <model.vec> [topk]
+> 中国
+韩国    0.598
+日本    0.596
+...
 ```
-__label__sports __label__nba Lakers win championship
-__label__tech Apple releases new iPhone
+
+### kmeans — 词聚类
+
+```bash
+./build/kmeans <model.vec> <k> [max_iter] [topn]
 ```
 
-### 输出文件
+使用球面 K-means（cosine similarity + round-robin 初始化）对词向量聚类。
 
-- `model.vec` — 词向量文件（首行为 `词数 维度`，后续每行 `词 向量值...`）
-- `model.vec.syn1` — 霍夫曼树节点参数
+## 算法
+
+- **CBOW**：上下文词的平均向量预测中心词
+- **Hierarchical Softmax**：霍夫曼树将 softmax 复杂度从 O(V) 降至 O(log V)
+- **两遍数据加载**：第一遍统计词频建词典，第二遍转为整数索引，避免内存溢出
+
+详细推导见 [W2V.md](W2V.md)。
 
 ## License
 
