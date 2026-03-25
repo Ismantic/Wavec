@@ -32,23 +32,19 @@ private:
     struct Token {
         std::string w;
         uint64_t cn = 0;
-        bool is_label = false; // 标记是否为标签
         std::vector<int> point;
         std::vector<char> code;
 
         Token() = default;
-        Token(const std::string& w, bool is_label = false) 
-            : w(w), cn(1), is_label(is_label) {}
+        Token(const std::string& w) : w(w), cn(1) {}
     };
 
     struct Document {
-        std::vector<int> words;   // word indices into dict
-        std::vector<int> labels;  // label indices into dict
+        std::vector<int> words;
     };
 
     int window = 2;
     uint64_t min_count = 1;
-    uint64_t min_label_count = 1;
     int num_core = 1;
     uint64_t dict_size = 0;
     uint64_t vec_size = 50;
@@ -71,16 +67,13 @@ private:
             std::ifstream fin(data_file);
             std::string line;
             std::unordered_map<std::string, uint64_t> word_count;
-            std::unordered_map<std::string, uint64_t> label_count_map;
             token_count = 0;
 
             while (std::getline(fin, line)) {
                 if (line.empty()) continue;
                 auto tokens = StrSplit(line, ' ');
                 for (const auto& token : tokens) {
-                    if (token.substr(0, 9) == "__label__") {
-                        label_count_map[token]++;
-                    } else if (!token.empty()) {
+                    if (!token.empty()) {
                         word_count[token]++;
                         token_count++;
                     }
@@ -94,14 +87,6 @@ private:
                     dict_map[p.first] = dict_size++;
                 } else {
                     token_count -= p.second;
-                }
-            }
-
-            for (const auto& p : label_count_map) {
-                if (p.second >= min_label_count) {
-                    dict.push_back(Token(p.first, true));
-                    dict.back().cn = p.second;
-                    dict_map[p.first] = dict_size++;
                 }
             }
 
@@ -130,10 +115,7 @@ private:
                 auto tokens = StrSplit(line, ' ');
                 for (const auto& token : tokens) {
                     auto it = dict_map.find(token);
-                    if (it == dict_map.end()) continue;
-                    if (dict[it->second].is_label) {
-                        doc.labels.push_back(it->second);
-                    } else {
+                    if (it != dict_map.end()) {
                         doc.words.push_back(it->second);
                     }
                 }
@@ -157,14 +139,6 @@ private:
             fout << "\n";
         }
         
-        // 保存分类层参数
-        std::ofstream fout_syn1(vec_file + ".syn1");
-        for (int i = 0; i < dict_size; i++) {
-            for (int c = 0; c < vec_size; c++) {
-                fout_syn1 << syn1[i*vec_size + c] << " ";
-            }
-            fout_syn1 << "\n";
-        }
     }
 
     inline float Sigmoid(float x) {
@@ -301,69 +275,6 @@ private:
         return loss;
     }
 
-    // 文档分类训练
-    void TrainDocument(float alpha, const std::vector<int>& word_indexes,
-                      const std::vector<int>& label_indexes) {
-        if (word_indexes.empty() || label_indexes.empty()) return;
-        
-        std::vector<float> neu1(vec_size, 0.0F);
-        std::vector<float> neu1e(vec_size, 0.0F);
-
-        // 计算文档平均向量
-        for (int idx : word_indexes) {
-            // 确保索引有效
-            if (idx < 0 || idx >= static_cast<int>(dict_size)) continue;
-            
-            for (int c = 0; c < vec_size; c++) {
-                neu1[c] += syn0[idx * vec_size + c];
-            }
-        }
-        for (int c = 0; c < vec_size; c++) {
-            neu1[c] /= word_indexes.size();
-        }
-
-        // 对每个标签进行训练
-        for (int label_idx : label_indexes) {
-            // 确保标签索引有效
-            if (label_idx < 0 || label_idx >= static_cast<int>(dict_size)) continue;
-            
-            std::fill(neu1e.begin(), neu1e.end(), 0.0F);
-            
-            // 层次Softmax
-            for (int v = 0; v < dict[label_idx].code.size(); v++) {
-                int point_index = dict[label_idx].point[v];
-                // 确保point_index在有效范围内
-                if (point_index < 0 || point_index >= static_cast<int>(dict_size)) {
-                    continue;
-                }
-                
-                int l2 = point_index * vec_size;
-                float f = 0;
-                for (int c = 0; c < vec_size; c++) {
-                    f += neu1[c] * syn1[c + l2];
-                }
-
-                float p = Sigmoid(f);
-                float g = (1 - dict[label_idx].code[v] - p) * alpha;
-
-                for (int c = 0; c < vec_size; c++) {
-                    neu1e[c] += g * syn1[c + l2];
-                    syn1[c + l2] += g * neu1[c];
-                }
-            }
-
-            // 更新单词向量
-            for (int idx : word_indexes) {
-                // 再次确保索引有效
-                if (idx < 0 || idx >= static_cast<int>(dict_size)) continue;
-                
-                for (int c = 0; c < vec_size; c++) {
-                    syn0[idx * vec_size + c] += neu1e[c] / word_indexes.size();
-                }
-            }
-        }
-    }
-
     bool ShouldDiscard(std::mt19937_64& rng, uint64_t count) {
         if (sample <= 0) return false;
         float freq = static_cast<float>(count) / token_count;
@@ -439,10 +350,6 @@ private:
                     }
                 }
 
-                // 文档分类训练
-                if (!doc.labels.empty()) {
-                    TrainDocument(alpha, doc.words, doc.labels);
-                }
             }
         }
     }
@@ -456,7 +363,7 @@ public:
 
         LoadData();
         if (dict_size == 0) {
-            std::cerr << "Error: No valid data loaded. Check min_count and min_label_count settings." << std::endl;
+            std::cerr << "Error: No valid data loaded. Check min_count setting." << std::endl;
             return;
         }
         InitNet();
@@ -482,7 +389,7 @@ public:
     void SetVecSize(int size) { vec_size = size; }
     void SetWindow(int w) { window = w; }
     void SetMinCount(uint64_t min) { min_count = min; }
-    void SetMinLabelCount(uint64_t min) { min_label_count = min; }
+
     void SetCores(int n) { num_core = n; }
     void SetIter(int n) { iter = n; }
     void SetSample(float t) { sample = t; }

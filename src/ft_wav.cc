@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
     model.SetVecSize(dim);
     model.SetWindow(window);
     model.SetMinCount(mincount);
-    model.SetMinLabelCount(1);
+
     model.SetCores(threads);
     model.SetIter(iter);
     model.SetSample(sample);
