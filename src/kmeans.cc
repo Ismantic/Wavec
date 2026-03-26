@@ -10,10 +10,11 @@
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "Usage: kmeans <model.vec> <k> [max_iter] [topn]\n"
+        std::cerr << "Usage: kmeans <model.vec> <k> [max_iter] [topn] [--export file]\n"
                   << "  k         Number of clusters\n"
                   << "  max_iter  Max iterations (default: 50)\n"
-                  << "  topn      Print top N words per cluster (default: 20)\n";
+                  << "  topn      Print top N words per cluster (default: 20)\n"
+                  << "  --export  Export word-cluster mapping to file\n";
         return 1;
     }
 
@@ -21,6 +22,12 @@ int main(int argc, char* argv[]) {
     int k = std::atoi(argv[2]);
     int max_iter = argc >= 4 ? std::atoi(argv[3]) : 50;
     int topn = argc >= 5 ? std::atoi(argv[4]) : 20;
+    std::string export_file;
+    for (int i = 1; i < argc - 1; i++) {
+        if (std::string(argv[i]) == "--export") {
+            export_file = argv[i + 1];
+        }
+    }
 
     // Load vectors
     std::ifstream fin(model_file);
@@ -147,6 +154,15 @@ int main(int argc, char* argv[]) {
 
         std::cerr << "Iter " << it + 1 << ": " << changed << " changed\n";
         if (changed == 0) break;
+    }
+
+    // Export word-cluster mapping
+    if (!export_file.empty()) {
+        std::ofstream fout(export_file);
+        for (int i = 0; i < vocab_size; i++) {
+            fout << words[i] << " " << assign[i] << "\n";
+        }
+        std::cerr << "Exported " << vocab_size << " word-cluster mappings to " << export_file << "\n";
     }
 
     // Output: for each cluster, print top N words (closest to centroid)
