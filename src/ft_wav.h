@@ -20,7 +20,7 @@ std::vector<std::string> StrSplit(const std::string& str, char r = ' ') {
     std::stringstream ss(str);
     std::string token;
     while (std::getline(ss, token, r)) {
-        if (!token.empty()) {
+        if (!token.empty() && token.find_first_not_of(" \t\r\n") != std::string::npos) {
             tokens.push_back(token);
         }
     }
@@ -130,15 +130,19 @@ private:
 
     void SaveModel() {
         std::ofstream fout(vec_file);
-        fout << dict_size << " " << vec_size << "\n";
+        int saved = 0;
         for (int i = 0; i < dict_size; i++) {
-            fout << dict[i].w << " ";
+            if (!dict[i].w.empty()) saved++;
+        }
+        fout << saved << " " << vec_size << "\n";
+        for (int i = 0; i < dict_size; i++) {
+            if (dict[i].w.empty()) continue;
+            fout << dict[i].w;
             for (int c = 0; c < vec_size; c++) {
-                fout << syn0[i*vec_size + c] << " ";
+                fout << " " << syn0[i*vec_size + c];
             }
             fout << "\n";
         }
-        
     }
 
     inline float Sigmoid(float x) {

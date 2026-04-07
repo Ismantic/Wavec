@@ -10,6 +10,7 @@ TOPN      ?= 20
 MINFREQ   ?= 10
 MINLEN    ?= 2
 FILTERED  := $(ROOT)/model.filter.vec
+CLUSTERS  := $(ROOT)/clusters.txt
 
 SEG_FILE  := $(PREPARE)/News.cut.txt
 
@@ -31,7 +32,7 @@ filter:
 
 kmeans:
 	@[ -f $(FILTERED) ] || $(MAKE) filter
-	$(BUILD_DIR)/kmeans $(FILTERED) $(K) $(MAX_ITER) $(TOPN)
+	$(BUILD_DIR)/kmeans $(FILTERED) $(K) $(MAX_ITER) $(TOPN) --output $(CLUSTERS) --export $(ROOT)/clusters.map
 
 clean:
 	rm -f $(PREPARE)/News.cut.txt

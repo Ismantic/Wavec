@@ -23,9 +23,12 @@ int main(int argc, char* argv[]) {
     int max_iter = argc >= 4 ? std::atoi(argv[3]) : 50;
     int topn = argc >= 5 ? std::atoi(argv[4]) : 20;
     std::string export_file;
+    std::string output_file;
     for (int i = 1; i < argc - 1; i++) {
         if (std::string(argv[i]) == "--export") {
             export_file = argv[i + 1];
+        } else if (std::string(argv[i]) == "--output") {
+            output_file = argv[i + 1];
         }
     }
 
@@ -160,12 +163,17 @@ int main(int argc, char* argv[]) {
     if (!export_file.empty()) {
         std::ofstream fout(export_file);
         for (int i = 0; i < vocab_size; i++) {
-            fout << words[i] << " " << assign[i] << "\n";
+            fout << words[i] << "\t" << assign[i] << "\n";
         }
         std::cerr << "Exported " << vocab_size << " word-cluster mappings to " << export_file << "\n";
     }
 
     // Output: for each cluster, print top N words (closest to centroid)
+    std::ofstream fout_output;
+    if (!output_file.empty()) {
+        fout_output.open(output_file);
+    }
+
     for (int c = 0; c < k; c++) {
         std::vector<std::pair<float, int>> members;
         for (int i = 0; i < vocab_size; i++) {
@@ -183,6 +191,17 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < n; i++) {
             std::cout << "  " << words[members[i].second] << "\t" << members[i].first << "\n";
         }
+
+        if (fout_output.is_open()) {
+            fout_output << "=== Cluster " << c << " (" << members.size() << " words) ===\n";
+            for (int i = 0; i < n; i++) {
+                fout_output << "  " << words[members[i].second] << "\t" << members[i].first << "\n";
+            }
+        }
+    }
+
+    if (fout_output.is_open()) {
+        std::cerr << "Results saved to " << output_file << "\n";
     }
 
     return 0;
