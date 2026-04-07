@@ -9,7 +9,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-生成三个可执行文件：`wavec`（训练）、`sim`（近义词查询）、`kmeans`（聚类）。
+生成三个可执行文件：`wavec`（训练）、`sim`（相似词查询）、`kmeans`（聚类）。
 
 ## 数据准备
 
@@ -67,7 +67,7 @@ make -C scripts kmeans MINFREQ=20 MINLEN=2 K=100
 
 ## 工具
 
-### sim — 近义词查询
+### sim — 相似词查询
 
 ```bash
 ./build/sim <model.vec> [topk]
@@ -85,6 +85,11 @@ make -C scripts kmeans MINFREQ=20 MINLEN=2 K=100
 ```
 
 使用球面 K-means（cosine similarity + round-robin 初始化）对词向量聚类。
+
+通过 `make -C scripts kmeans` 运行时会产出两个文件：
+
+- `clusters.txt` — 每簇 top N 词及其相似度
+- `clusters.map` — 全部词的聚类映射（`word\tclusterID`）
 
 聚类前可通过 `filter_vec.py` 过滤低频词和单字词，避免低质量向量干扰聚类效果。
 
