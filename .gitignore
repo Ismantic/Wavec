@@ -9,4 +9,6 @@ build/
 
 # Intermediate data
 test_data.txt
-train_*.txt
+
+# Docs
+W2V.md

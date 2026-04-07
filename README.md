@@ -11,13 +11,43 @@ cmake --build build
 
 生成三个可执行文件：`wavec`（训练）、`sim`（近义词查询）、`kmeans`（聚类）。
 
+## 数据准备
+
+将以下文件放入 `prepare/` 目录：
+
+- `iscut` — 分词工具（来自 [Iscut](https://github.com/Ismantic/Iscut)）
+- `dict.txt` — 分词词典
+- `News.sentences.txt` — 语料文件，每行一个句子
+
 ## 训练
+
+通过 `scripts/Makefile` 驱动分词和训练：
+
+```bash
+# 分词
+make -C scripts cut
+
+# 分词 + 训练（若已分词则跳过）
+make -C scripts fit
+```
+
+可选参数：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| NPROC | 4 | 分词并行进程数 |
+| THREADS | 6 | 训练线程数 |
+| OUTPUT | model.vec | 输出模型路径 |
+
+```bash
+make -C scripts fit NPROC=8 THREADS=16 OUTPUT=my.vec
+```
+
+### wavec 参数
 
 ```bash
 ./build/wavec [options] <input> <output>
 ```
-
-选项：
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
@@ -28,19 +58,7 @@ cmake --build build
 | -iter | 5 | 训练轮数 |
 | -sample | 1e-3 | 高频词下采样阈值 |
 
-输入文件每行一个文档，词语空格分隔。输出为 word2vec 文本格式。
-
-### 全流程脚本
-
-`scripts/train.sh` 提供从 THUCNews 语料到词向量的完整 pipeline：
-
-```bash
-bash scripts/train.sh <thucnews_dir> <output_model> [threads]
-```
-
-1. 提取文本（`prepare_thuc.py`）
-2. 并行分词（`segment.sh`，依赖 [IsmaCut](https://github.com/Ismantic/IsmaCut)）
-3. 训练词向量
+输入文件每行一个句子，词语空格分隔。输出为 word2vec 文本格式。
 
 ## 工具
 
@@ -61,14 +79,6 @@ bash scripts/train.sh <thucnews_dir> <output_model> [threads]
 ```
 
 使用球面 K-means（cosine similarity + round-robin 初始化）对词向量聚类。
-
-## 算法
-
-- **CBOW**：上下文词的平均向量预测中心词
-- **Hierarchical Softmax**：霍夫曼树将 softmax 复杂度从 O(V) 降至 O(log V)
-- **两遍数据加载**：第一遍统计词频建词典，第二遍转为整数索引，避免内存溢出
-
-详细推导见 [W2V.md](W2V.md)。
 
 ## License
 

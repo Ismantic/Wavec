@@ -1,14 +1,17 @@
 #!/bin/bash
-# Parallel segmentation using IsmaCut.
-# Usage: segment.sh <dict> <input> <output> [nproc]
+# Parallel segmentation using iscut.
+# Usage: segment.sh <input> <output> [nproc]
 set -euo pipefail
 
-DICT=${1:?usage: segment.sh <dict> <input> <output> [nproc]}
-INPUT=${2:?usage: segment.sh <dict> <input> <output> [nproc]}
-OUTPUT=${3:?usage: segment.sh <dict> <input> <output> [nproc]}
-NPROC=${4:-$(nproc)}
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PREPARE_DIR="$SCRIPT_DIR/../prepare"
+ISCUT="$PREPARE_DIR/iscut"
+DICT="$PREPARE_DIR/dict.txt"
 
-ISMACUT="$(dirname "$0")/../../IsmaCut/build/ismacut"
+INPUT=${1:?usage: segment.sh <input> <output> [nproc]}
+OUTPUT=${2:?usage: segment.sh <input> <output> [nproc]}
+NPROC=${3:-$(nproc)}
+
 TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
 
@@ -22,7 +25,7 @@ echo "Segmenting with $NPROC processes..."
 PIDS=()
 for part in "$TMPDIR"/part_*; do
     out="$part.seg"
-    "$ISMACUT" --dict "$DICT" --cut "$part" "$out" &
+    "$ISCUT" --dict "$DICT" --cut "$part" "$out" &
     PIDS+=($!)
 done
 
