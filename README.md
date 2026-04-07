@@ -30,40 +30,10 @@ make -C scripts filter   # 按词频和字数过滤模型
 make -C scripts kmeans   # 聚类（若未过滤则自动过滤）
 ```
 
-### 参数
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| NPROC | 4 | 分词并行进程数 |
-| THREADS | 8 | 训练线程数 |
-| OUTPUT | model.vec | 输出模型路径 |
-| MINFREQ | 10 | 过滤最低词频 |
-| MINLEN | 2 | 过滤最少字符数 |
-| K | 100 | 聚类数 |
-| MAX_ITER | 50 | 聚类最大迭代次数 |
-| TOPN | 20 | 每簇显示词数 |
-
 ```bash
 make -C scripts fit NPROC=8 THREADS=16
 make -C scripts kmeans MINFREQ=20 MINLEN=2 K=100
 ```
-
-### wavec 参数
-
-```bash
-./build/wavec [options] <input> <output>
-```
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| -dim | 100 | 向量维度 |
-| -window | 8 | 上下文窗口 |
-| -mincount | 5 | 最低词频 |
-| -threads | 4 | 线程数 |
-| -iter | 5 | 训练轮数 |
-| -sample | 1e-3 | 高频词下采样阈值 |
-
-输入文件每行一个句子，词语空格分隔。输出为 word2vec 文本格式。
 
 ## 工具
 
