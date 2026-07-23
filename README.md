@@ -63,6 +63,11 @@ make -C scripts kmeans MINFREQ=20 MINLEN=2 K=100
 
 聚类前可通过 `filter_vec.py` 过滤低频词和单字词，避免低质量向量干扰聚类效果。
 
+## 原理文档
+
+CBOW、霍夫曼树、分层 Softmax 和梯度更新的完整讲解见《底层实现：文本处理》的
+[番外篇：词向量 W2V](https://ismantic.github.io/text/wavec.html)。
+
 ## License
 
 MIT
