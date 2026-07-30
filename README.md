@@ -44,7 +44,7 @@ model.filter.vec
 clusters.txt + clusters.map
 ```
 
-## 环境
+## 运行环境
 
 需要 CMake 3.14+、支持 C++17 的编译器和 Python 3.9+。
 
@@ -62,7 +62,7 @@ cmake --build build -j
 - `build/sim`：查询相似词
 - `build/kmeans`：聚类词向量
 
-## 从零训练
+## 训练过程
 
 一条命令完成下载、转换、分词、训练、过滤和聚类：
 
@@ -156,7 +156,7 @@ ctest --test-dir build --output-on-failure
 测试使用临时小语料，覆盖训练、相似词查询、聚类导出和常见非法参数，不需要下载
 THUCNews。
 
-## 实现说明
+## 说明
 
 训练器为便于理解，会将分词语料转换为整数索引后保存在内存中。多线程训练采用经典
 word2vec 风格的无锁 Hogwild 更新，因此速度快、代码直接，但相同参数的不同运行不保证
