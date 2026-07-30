@@ -1,38 +1,21 @@
 #!/bin/bash
-# Parallel segmentation using iscut.
-# Usage: segment.sh <input> <output> [nproc]
+# Batch segmentation using Wapic.
+# Usage: cut.sh <input> <output> [threads] [model]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PREPARE_DIR="$SCRIPT_DIR/../prepare"
-ISCUT="$PREPARE_DIR/iscut"
-DICT="$PREPARE_DIR/dict.txt"
 
-INPUT=${1:?usage: segment.sh <input> <output> [nproc]}
-OUTPUT=${2:?usage: segment.sh <input> <output> [nproc]}
-NPROC=${3:-$(nproc)}
+INPUT=${1:?usage: cut.sh <input> <output> [threads] [model]}
+OUTPUT=${2:?usage: cut.sh <input> <output> [threads] [model]}
+THREADS=${3:-$(nproc)}
+MODEL=${4:-}
+PYTHON=${PYTHON:-python3}
 
-TMPDIR=$(mktemp -d)
-trap "rm -rf $TMPDIR" EXIT
+export OMP_NUM_THREADS="$THREADS"
+mkdir -p "$(dirname "$OUTPUT")"
 
-TOTAL=$(wc -l < "$INPUT")
-CHUNK=$(( (TOTAL + NPROC - 1) / NPROC ))
-
-echo "Splitting $TOTAL lines into $NPROC chunks of ~$CHUNK lines..."
-split -l "$CHUNK" -d -a 3 "$INPUT" "$TMPDIR/part_"
-
-echo "Segmenting with $NPROC processes..."
-PIDS=()
-for part in "$TMPDIR"/part_*; do
-    out="$part.seg"
-    "$ISCUT" --dict "$DICT" --cut "$part" "$out" &
-    PIDS+=($!)
-done
-
-for pid in "${PIDS[@]}"; do
-    wait "$pid"
-done
-
-echo "Merging..."
-cat "$TMPDIR"/part_*.seg > "$OUTPUT"
-echo "Done: $(wc -l < "$OUTPUT") lines -> $OUTPUT"
+if [[ -n "$MODEL" ]]; then
+    "$PYTHON" "$SCRIPT_DIR/segment_wapic.py" "$INPUT" "$OUTPUT" --model "$MODEL"
+else
+    "$PYTHON" "$SCRIPT_DIR/segment_wapic.py" "$INPUT" "$OUTPUT"
+fi

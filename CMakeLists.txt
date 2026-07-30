@@ -12,3 +12,13 @@ target_link_libraries(wavec Threads::Threads)
 
 add_executable(sim src/sim.cc)
 add_executable(kmeans src/kmeans.cc)
+
+include(CTest)
+if(BUILD_TESTING)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(
+        NAME smoke
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/smoke.py
+                $<TARGET_FILE:wavec> $<TARGET_FILE:sim> $<TARGET_FILE:kmeans>
+    )
+endif()

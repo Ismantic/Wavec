@@ -22,6 +22,10 @@ int main(int argc, char* argv[]) {
     int k = std::atoi(argv[2]);
     int max_iter = argc >= 4 ? std::atoi(argv[3]) : 50;
     int topn = argc >= 5 ? std::atoi(argv[4]) : 20;
+    if (k <= 0 || max_iter <= 0 || topn < 0) {
+        std::cerr << "Error: k and max_iter must be positive; topn must be non-negative.\n";
+        return 1;
+    }
     std::string export_file;
     std::string output_file;
     for (int i = 1; i < argc - 1; i++) {
@@ -34,8 +38,19 @@ int main(int argc, char* argv[]) {
 
     // Load vectors
     std::ifstream fin(model_file);
-    int vocab_size, dim;
-    fin >> vocab_size >> dim;
+    if (!fin) {
+        std::cerr << "Error: Cannot open model file: " << model_file << "\n";
+        return 1;
+    }
+    int vocab_size = 0, dim = 0;
+    if (!(fin >> vocab_size >> dim) || vocab_size <= 0 || dim <= 0) {
+        std::cerr << "Error: Invalid model header.\n";
+        return 1;
+    }
+    if (k > vocab_size) {
+        std::cerr << "Error: k cannot exceed vocabulary size (" << vocab_size << ").\n";
+        return 1;
+    }
 
     std::vector<std::string> words(vocab_size);
     std::vector<float> vecs(static_cast<size_t>(vocab_size) * dim);
@@ -48,6 +63,10 @@ int main(int argc, char* argv[]) {
         for (int j = 0; j < dim; j++) {
             fin >> vecs[i * dim + j];
             norm += vecs[i * dim + j] * vecs[i * dim + j];
+        }
+        if (!fin || words[i].empty()) {
+            std::cerr << "Error: Invalid or truncated model data.\n";
+            return 1;
         }
         norm = std::sqrt(norm);
         if (norm > 0) {
@@ -162,6 +181,10 @@ int main(int argc, char* argv[]) {
     // Export word-cluster mapping
     if (!export_file.empty()) {
         std::ofstream fout(export_file);
+        if (!fout) {
+            std::cerr << "Error: Cannot open export file: " << export_file << "\n";
+            return 1;
+        }
         for (int i = 0; i < vocab_size; i++) {
             fout << words[i] << "\t" << assign[i] << "\n";
         }
@@ -172,6 +195,10 @@ int main(int argc, char* argv[]) {
     std::ofstream fout_output;
     if (!output_file.empty()) {
         fout_output.open(output_file);
+        if (!fout_output) {
+            std::cerr << "Error: Cannot open output file: " << output_file << "\n";
+            return 1;
+        }
     }
 
     for (int c = 0; c < k; c++) {

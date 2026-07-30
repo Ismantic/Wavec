@@ -20,11 +20,22 @@ int main(int argc, char* argv[]) {
 
     std::string model_file = argv[1];
     int topk = argc >= 3 ? std::atoi(argv[2]) : 10;
+    if (topk <= 0) {
+        std::cerr << "Error: topk must be positive.\n";
+        return 1;
+    }
 
     // Load vectors
     std::ifstream fin(model_file);
-    int vocab_size, dim;
-    fin >> vocab_size >> dim;
+    if (!fin) {
+        std::cerr << "Error: Cannot open model file: " << model_file << "\n";
+        return 1;
+    }
+    int vocab_size = 0, dim = 0;
+    if (!(fin >> vocab_size >> dim) || vocab_size <= 0 || dim <= 0) {
+        std::cerr << "Error: Invalid model header.\n";
+        return 1;
+    }
 
     std::vector<WordVec> words(vocab_size);
     std::unordered_map<std::string, int> word2id;
@@ -36,6 +47,10 @@ int main(int argc, char* argv[]) {
         words[i].vec.resize(dim);
         for (int j = 0; j < dim; j++) {
             fin >> words[i].vec[j];
+        }
+        if (!fin || words[i].word.empty()) {
+            std::cerr << "Error: Invalid or truncated model data.\n";
+            return 1;
         }
         // L2 normalize
         float norm = 0;
@@ -73,10 +88,11 @@ int main(int argc, char* argv[]) {
             scores.emplace_back(dot, i);
         }
 
-        std::partial_sort(scores.begin(), scores.begin() + topk, scores.end(),
+        int count = std::min(topk, static_cast<int>(scores.size()));
+        std::partial_sort(scores.begin(), scores.begin() + count, scores.end(),
                           [](const auto& a, const auto& b) { return a.first > b.first; });
 
-        for (int i = 0; i < topk && i < static_cast<int>(scores.size()); i++) {
+        for (int i = 0; i < count; i++) {
             std::cout << words[scores[i].second].word
                       << "\t" << scores[i].first << "\n";
         }

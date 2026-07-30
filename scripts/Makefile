@@ -1,9 +1,18 @@
 ROOT      := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))..
 BUILD_DIR := $(ROOT)/build
 PREPARE   := $(ROOT)/prepare
+-include $(ROOT)/local.mk
 NPROC     ?= 4
 THREADS   ?= 8
+CORPUS    ?= $(ROOT)/data/derived/THUCNews.sentences.txt
+WAPIC_MODEL ?=
+PY       ?= $(if $(VIRTUAL_ENV),$(VIRTUAL_ENV)/bin/python,$(if $(wildcard $(ROOT)/.venv/bin/python),$(ROOT)/.venv/bin/python,python3))
 OUTPUT    ?= $(ROOT)/model.vec
+DIM       ?= 100
+WINDOW    ?= 8
+MINCOUNT  ?= 5
+ITER      ?= 5
+SAMPLE    ?= 1e-3
 K         ?= 100
 MAX_ITER  ?= 50
 TOPN      ?= 20
@@ -14,20 +23,33 @@ CLUSTERS  := $(ROOT)/clusters.txt
 
 SEG_FILE  := $(PREPARE)/News.cut.txt
 
-.PHONY: cut fit filter kmeans clean
+.PHONY: all data build cut fit filter kmeans clean
 
-cut:
-	bash $(ROOT)/scripts/cut.sh $(PREPARE)/News.documents.txt $(SEG_FILE) $(NPROC)
+all: kmeans
 
-fit:
+data:
+	$(MAKE) -C $(ROOT)/data all PY=$(PY)
+
+build:
+	cmake -S $(ROOT) -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=Release
+	cmake --build $(BUILD_DIR) -j$(NPROC)
+
+$(CORPUS):
+	$(MAKE) -C $(ROOT)/data all PY=$(PY)
+
+cut: $(CORPUS)
+	PYTHON=$(PY) bash $(ROOT)/scripts/cut.sh $(CORPUS) $(SEG_FILE) $(NPROC) $(WAPIC_MODEL)
+
+fit: build
 	@[ -f $(SEG_FILE) ] || $(MAKE) cut
 	$(BUILD_DIR)/wavec \
-		-dim 100 -window 8 -mincount 5 \
-		-threads $(THREADS) -iter 5 -sample 1e-3 \
+		-dim $(DIM) -window $(WINDOW) -mincount $(MINCOUNT) \
+		-threads $(THREADS) -iter $(ITER) -sample $(SAMPLE) \
 		$(SEG_FILE) $(OUTPUT)
 
 filter:
-	python3 $(ROOT)/scripts/filter_vec.py $(SEG_FILE) $(OUTPUT) $(FILTERED) \
+	@[ -f $(OUTPUT) ] || $(MAKE) fit
+	$(PY) $(ROOT)/scripts/filter_vec.py $(SEG_FILE) $(OUTPUT) $(FILTERED) \
 		--minfreq $(MINFREQ) --minlen $(MINLEN)
 
 kmeans:

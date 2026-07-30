@@ -52,6 +52,13 @@ int main(int argc, char* argv[]) {
     std::string input = argv[argc - 2];
     std::string output = argv[argc - 1];
 
+    if (dim <= 0 || window <= 0 || mincount <= 0 || threads <= 0 ||
+        iter <= 0 || sample < 0) {
+        std::cerr << "Error: dim, window, mincount, threads, and iter must be "
+                     "positive; sample must be non-negative.\n";
+        return 1;
+    }
+
     std::cerr << "Input:    " << input << "\n"
               << "Output:   " << output << "\n"
               << "dim=" << dim << " window=" << window
@@ -67,6 +74,5 @@ int main(int argc, char* argv[]) {
     model.SetIter(iter);
     model.SetSample(sample);
 
-    model.Fit(input, output);
-    return 0;
+    return model.Fit(input, output) ? 0 : 1;
 }

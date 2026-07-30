@@ -61,10 +61,14 @@ private:
     std::vector<float> syn1;  // 输出向量
     std::vector<Document> data;
 
-    void LoadData() {
+    bool LoadData() {
         // --- Pass 1: count words, build dictionary ---
         {
             std::ifstream fin(data_file);
+            if (!fin) {
+                std::cerr << "Error: Cannot open input file: " << data_file << "\n";
+                return false;
+            }
             std::string line;
             std::unordered_map<std::string, uint64_t> word_count;
             token_count = 0;
@@ -107,6 +111,10 @@ private:
         // --- Pass 2: convert to indices, store compact documents ---
         {
             std::ifstream fin(data_file);
+            if (!fin) {
+                std::cerr << "Error: Cannot reopen input file: " << data_file << "\n";
+                return false;
+            }
             std::string line;
 
             while (std::getline(fin, line)) {
@@ -126,10 +134,15 @@ private:
         }
 
         std::cerr << "Loaded " << data.size() << " documents\n";
+        return true;
     }
 
-    void SaveModel() {
+    bool SaveModel() {
         std::ofstream fout(vec_file);
+        if (!fout) {
+            std::cerr << "Error: Cannot open output file: " << vec_file << "\n";
+            return false;
+        }
         int saved = 0;
         for (int i = 0; i < dict_size; i++) {
             if (!dict[i].w.empty()) saved++;
@@ -143,6 +156,7 @@ private:
             }
             fout << "\n";
         }
+        return static_cast<bool>(fout);
     }
 
     inline float Sigmoid(float x) {
@@ -317,7 +331,7 @@ private:
                         float progress = static_cast<float>(count) / (core_count * iter);
                         alpha = start_alpha * (1 - progress);
                         alpha = std::max(alpha, 0.0001f);
-                        if (core == 0) {
+                        if (core == 0 && count % 1000000 == 0) {
                             double avg_loss = loss_count > 0 ? loss_sum / loss_count : 0;
                             std::cerr << "\rprogress: " << int(progress * 100)
                                       << "% alpha: " << alpha
@@ -361,19 +375,21 @@ private:
 public:
     FastText() = default;
 
-    void Fit(const std::string& data_filename, const std::string& vec_filename) {
+    bool Fit(const std::string& data_filename, const std::string& vec_filename) {
         data_file = data_filename;
         vec_file = vec_filename;
 
-        LoadData();
+        if (!LoadData()) return false;
         if (dict_size == 0) {
             std::cerr << "Error: No valid data loaded. Check min_count setting." << std::endl;
-            return;
+            return false;
         }
         InitNet();
 
         auto start = std::chrono::steady_clock::now();
 
+        // Classic word2vec-style Hogwild updates: intentionally lock-free for a
+        // compact teaching implementation. Runs are therefore not bit-reproducible.
         std::vector<std::thread> threads;
         for (int i = 0; i < num_core; i++) {
             threads.emplace_back(&FastText::FitOne, this, i);
@@ -387,7 +403,7 @@ public:
         std::chrono::duration<float> elapsed = end - start;
         std::cout << "Fit Done! Time: " << elapsed.count() << "s" << std::endl;
 
-        SaveModel();
+        return SaveModel();
     }
     
     void SetVecSize(int size) { vec_size = size; }

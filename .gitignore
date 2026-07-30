@@ -6,9 +6,22 @@ build/
 *.vec
 *.vec.syn1
 !data/model.vec
+/clusters.txt
+/clusters.map
 
 # Intermediate data
 test_data.txt
+data/downloads/
+data/derived/
+/prepare/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local configuration
+local.mk
 
 # Docs
 W2V.md

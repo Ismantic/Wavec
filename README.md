@@ -1,73 +1,170 @@
 # Wavec
 
-CBOW + Hierarchical Softmax 中文词向量训练。
+[English](README_EN.md) | 中文
 
-## 构建
+Wavec 是一个面向教学的中文词向量项目，使用 C++17 从零实现：
 
-```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+- CBOW（Continuous Bag of Words）
+- Huffman Tree
+- Hierarchical Softmax
+- 高频词下采样
+- 多线程 Hogwild 训练
+- Cosine 相似词查询
+- Spherical K-means 词聚类
+
+项目强调算法清晰和流程完整，不依赖现成的词向量训练框架。默认使用
+[THUCNews](https://huggingface.co/datasets/SirlyDreamer/THUCNews) 作为语料，
+通过 [Wapic](https://github.com/Ismantic/Wapic) 完成中文分词。
+
+## 项目结构
+
+```text
+src/                 C++ 训练、查询和聚类实现
+scripts/             分词、过滤和完整训练流程
+data/                THUCNews 下载与转换代码
+tests/               小语料端到端测试
+prepare/             生成的分词语料（不提交）
+CMakeLists.txt        C++ 构建配置
+requirements.txt      Python 数据处理依赖
 ```
 
-生成三个可执行文件：`wavec`（训练）、`sim`（相似词查询）、`kmeans`（聚类）。
+完整数据流：
 
-## 数据准备
-
-将以下文件放入 `prepare/` 目录：
-
-- `iscut` — 分词工具（来自 [Iscut](https://github.com/Ismantic/Iscut)）
-- `dict.txt` — 分词词典
-- `News.documents.txt` — 语料文件，每行一个句子
-
-## 使用
-
-通过 `scripts/Makefile` 驱动完整流程：
-
-```bash
-make -C scripts cut      # 分词
-make -C scripts fit      # 训练（若未分词则自动分词）
-make -C scripts filter   # 按词频和字数过滤模型
-make -C scripts kmeans   # 聚类（若未过滤则自动过滤）
+```text
+Hugging Face THUCNews
+        ↓
+一行一句的原始语料
+        ↓ Wapic
+空格分隔的分词语料
+        ↓ CBOW + Hierarchical Softmax
+model.vec
+        ↓ 词频与词长过滤
+model.filter.vec
+        ↓ Spherical K-means
+clusters.txt + clusters.map
 ```
 
+## 环境
+
+需要 CMake 3.14+、支持 C++17 的编译器和 Python 3.9+。
+
 ```bash
-make -C scripts fit NPROC=8 THREADS=16
-make -C scripts kmeans MINFREQ=20 MINLEN=2 K=100
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 ```
 
-## 工具
+构建后生成：
 
-### sim — 相似词查询
+- `build/wavec`：训练词向量
+- `build/sim`：查询相似词
+- `build/kmeans`：聚类词向量
+
+## 从零训练
+
+一条命令完成下载、转换、分词、训练、过滤和聚类：
 
 ```bash
-./build/sim <model.vec> [topk]
+make -C scripts all NPROC=16 THREADS=16
+```
+
+各阶段也可以单独执行：
+
+```bash
+make -C scripts data       # 下载并转换 THUCNews
+make -C scripts cut        # 使用 Wapic 分词
+make -C scripts fit        # 训练词向量
+make -C scripts filter     # 过滤低频词和单字词
+make -C scripts kmeans     # 聚类并导出映射
+```
+
+常用参数：
+
+```bash
+make -C scripts fit \
+  DIM=100 WINDOW=8 MINCOUNT=5 ITER=5 THREADS=16
+
+make -C scripts kmeans \
+  MINFREQ=10 MINLEN=2 K=100 MAX_ITER=50 TOPN=20
+```
+
+默认训练产物均位于仓库根目录：
+
+| 文件 | 内容 |
+|---|---|
+| `model.vec` | 完整词向量 |
+| `model.filter.vec` | 过滤后的词向量 |
+| `clusters.txt` | 每个簇最接近中心的词 |
+| `clusters.map` | `word<TAB>cluster_id` 全量映射 |
+
+下载数据、分词语料和模型文件已加入 `.gitignore`。
+
+## 命令行工具
+
+### 训练
+
+```bash
+./build/wavec [options] <segmented.txt> <model.vec>
+```
+
+主要选项包括 `-dim`、`-window`、`-mincount`、`-threads`、`-iter` 和
+`-sample`。输入语料每行表示一个句子，词之间以空格分隔。
+
+### 相似词查询
+
+```bash
+./build/sim model.filter.vec 10
 > 北京
-深圳    0.699
-成都    0.692
-广东    0.670
-...
+成都    0.765
+武汉    0.760
+南京    0.758
 ```
 
-### kmeans — 词聚类
+输入 `quit` 或空行退出。
+
+### 词聚类
 
 ```bash
-./build/kmeans <model.vec> <k> [max_iter] [topn]
+./build/kmeans model.filter.vec 100 50 20 \
+  --output clusters.txt \
+  --export clusters.map
 ```
 
-使用球面 K-means（cosine similarity + round-robin 初始化）对词向量聚类。
+聚类使用归一化词向量和余弦相似度。固定随机种子保证聚类初始化可复现。
 
-通过 `make -C scripts kmeans` 运行时会产出两个文件：
+## 数据管理
 
-- `clusters.txt` — 每簇 top N 词及其相似度
-- `clusters.map` — 全部词的聚类映射（`word\tclusterID`）
+数据层只依赖 Hugging Face 上的 `SirlyDreamer/THUCNews`：
 
-聚类前可通过 `filter_vec.py` 过滤低频词和单字词，避免低质量向量干扰聚类效果。
+```bash
+make -C data status
+make -C data download
+make -C data process
+```
 
-## 原理文档
+原始 Parquet 文件保存在 `data/downloads/`，转换后的语料保存在
+`data/derived/THUCNews.sentences.txt`。生成过程采用临时文件，成功后才替换正式产物。
 
-CBOW、霍夫曼树、分层 Softmax 和梯度更新的完整讲解见《底层实现：文本处理》的
+## 测试
+
+```bash
+ctest --test-dir build --output-on-failure
+```
+
+测试使用临时小语料，覆盖训练、相似词查询、聚类导出和常见非法参数，不需要下载
+THUCNews。
+
+## 实现说明
+
+训练器为便于理解，会将分词语料转换为整数索引后保存在内存中。多线程训练采用经典
+word2vec 风格的无锁 Hogwild 更新，因此速度快、代码直接，但相同参数的不同运行不保证
+逐位一致。该取舍适合学习算法，不以大型生产训练平台为目标。
+
+CBOW、Huffman Tree、Hierarchical Softmax 和梯度更新的原理讲解见
 [番外篇：词向量 W2V](https://ismantic.github.io/text/wavec.html)。
 
 ## License
 
-MIT
+MIT。THUCNews 和 Wapic 的许可条件请分别参考其上游项目。
